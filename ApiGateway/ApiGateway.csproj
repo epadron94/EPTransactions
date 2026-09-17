@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Ocelot" Version="25.0.1" />
+    <PackageReference Include="VaultSharp" Version="1.17.5.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Update="ocelot.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
