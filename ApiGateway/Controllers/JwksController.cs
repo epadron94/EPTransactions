@@ -9,16 +9,18 @@ namespace ApiGateway.Controllers;
 public class JwksController : ControllerBase
 {
     private readonly IConfiguration _configuration;
+    private readonly IGatewaySignerKeyProvider _keyProvider;
 
-    public JwksController(IConfiguration configuration)
+    public JwksController(IConfiguration configuration, IGatewaySignerKeyProvider keyProvider)
     {
         _configuration = configuration;
+        _keyProvider = keyProvider;
     }
 
     [HttpGet("/.well-known/jwks.json")]
-    public IActionResult Get()
+    public async Task<IActionResult> Get()
     {
-        using var ecdsa = GatewaySignerKeyLoader.LoadFromConfiguration(_configuration);
+        var(kid, ecdsa) = await _keyProvider.GetPublicKeyAsync(HttpContext.RequestAborted);
         var parameters = ecdsa.ExportParameters(includePrivateParameters: false);
         var crv = GetCurveName(parameters.Curve);
 

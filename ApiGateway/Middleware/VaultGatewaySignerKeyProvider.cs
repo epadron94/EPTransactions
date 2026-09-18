@@ -1,5 +1,5 @@
 using System.Security.Cryptography;
-using Microsoft.AspNetCore.DataProtection;
+using System.Text.Json;
 using Microsoft.Extensions.Options;
 using VaultSharp;
 using VaultSharp.V1.Commons;
@@ -12,7 +12,7 @@ public interface IGatewaySignerKeyProvider
     Task<(string Kid, ECDsa PublicKey)> GetPublicKeyAsync(CancellationToken ct = default);
 }
 
-public class VaultGatewaySignerKeyprovider : IGatewaySignerKeyProvider
+public class VaultGatewaySignerKeyProvider : IGatewaySignerKeyProvider
 {
     private readonly IVaultClient vaultClient;
     private readonly VaultOptions vaultOptions;
@@ -24,9 +24,9 @@ public class VaultGatewaySignerKeyprovider : IGatewaySignerKeyProvider
     private readonly TimeSpan cacheDuration = TimeSpan.FromMinutes(5);
     private readonly SemaphoreSlim _lock = new(1,1);
 
-    public VaultGatewaySignerKeyprovider(IVaultClient _vaultClient,
-                                         IOptions<VaultOptions> _vaultOptions,
-                                         IConfiguration configuration)
+    public VaultGatewaySignerKeyProvider(IVaultClient _vaultClient,
+                                        IOptions<VaultOptions> _vaultOptions,
+                                        IConfiguration configuration)
     {
         vaultClient = _vaultClient;
         vaultOptions = _vaultOptions.Value;
@@ -34,14 +34,16 @@ public class VaultGatewaySignerKeyprovider : IGatewaySignerKeyProvider
             ?? throw new InvalidOperationException("GatewaySigner:ServiceName is not configured.");
     }
 
-    public async Task<(string Kid, ECDsa PublicKey)> GetPublicKeyAsync(CancellationToken ct = default)
+    public async Task<(string, ECDsa)> GetPublicKeyAsync(CancellationToken ct = default)
     {
-        await 
+        await EnsureLoadedAsync(ct);
+        return (cachedKid!, cachedKey!);
     }
 
-    public Task<ECDsa> GetSigningKeyAsync(CancellationToken ct = default)
+    public async Task<ECDsa> GetSigningKeyAsync(CancellationToken ct = default)
     {
-        throw new NotImplementedException();
+        await EnsureLoadedAsync(ct);
+        return cachedKey!;
     }
 
     private async Task EnsureLoadedAsync(CancellationToken ct)
@@ -57,10 +59,13 @@ public class VaultGatewaySignerKeyprovider : IGatewaySignerKeyProvider
 
             Secret<SecretData> secret = await vaultClient.V1.Secrets.KeyValue.V2
             .ReadSecretAsync(path: $"{vaultOptions.SecretPathPrefix}/{serviceName}",
-                             mountPoint: vaultOptions.MounthPath);
+                            mountPoint: vaultOptions.MountPath);
 
-            var pem = (string)secret.Data.Data["private_key_pem"];
-            var kid = (string)secret.Data.Data["kid"];
+            var pem = ((JsonElement)secret.Data.Data["private_key_pem"]).GetString()
+                ?? throw new InvalidOperationException("private_key_pem missing");
+            
+            var kid = ((JsonElement)secret.Data.Data["kid"]).GetString()
+                ?? throw new InvalidOperationException("kid is missing");
             var ecdsa = ECDsa.Create();
             ecdsa.ImportFromPem(pem);
 

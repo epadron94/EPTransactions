@@ -12,20 +12,25 @@ public class GatewaySignerMiddleware
     private const string InternalSignatureHeaderName = "internal-signature";
 
     private readonly RequestDelegate _next;
-    private readonly ECDsa _ecdsa;
+    //private readonly ECDsa _ecdsa;
+    private readonly IGatewaySignerKeyProvider keyProvider;
 
-    public GatewaySignerMiddleware(RequestDelegate next, IConfiguration configuration)
+    public GatewaySignerMiddleware(RequestDelegate next, IConfiguration configuration, IGatewaySignerKeyProvider _keyProvider)
     {
         _next = next;
-        _ecdsa = GatewaySignerKeyLoader.LoadFromConfiguration(configuration);
+        //_ecdsa = GatewaySignerKeyLoader.LoadFromConfiguration(configuration);
+        keyProvider = _keyProvider;
+
     }
 
     public async Task InvokeAsync(HttpContext context)
     {
         if (context.Request.Headers.TryGetValue(PayloadHeaderName, out var omPayload))
         {
+            var ecdsa = await keyProvider.GetSigningKeyAsync(context.RequestAborted);
+
             var payloadBytes = Encoding.UTF8.GetBytes(omPayload.ToString());
-            var signatureBytes = _ecdsa.SignData(payloadBytes, HashAlgorithmName.SHA256);
+            var signatureBytes = ecdsa.SignData(payloadBytes, HashAlgorithmName.SHA256);
 
             context.Request.Headers[InternalPayloadHeaderName] = Convert.ToBase64String(payloadBytes);
             context.Request.Headers[InternalSignatureHeaderName] = Convert.ToBase64String(signatureBytes);
