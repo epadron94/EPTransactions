@@ -1,14 +1,14 @@
 <Solution>
   <Project Path="ApiGateway/ApiGateway.csproj" />
-  <Folder Name="/Services">
-    <Folder Name ="/Math">
-      <Project Path="/Math/Servicio-demo/Servicio-demo.csproj" />
+  <Folder Name="/Services/">
+    <Folder Name="/Math/">
+      <Project Path="Services/Math/Servicio-demo/Servicio-demo.csproj" />
     </Folder>
-    <Folder Name ="/OtherKindServices">
-      <Project Path="/OtherKindServices/OtherService-demo/OtherService-demo.csproj" />
+    <Folder Name="/OtherKindServices/">
+      <Project Path="Services/OtherKindServices/OtherService-demo/OtherService-demo.csproj" />
     </Folder>
   </Folder>
-  <Folder Name="Package">
-    <Project Path="Package/EPPackage/EPPackage.csproj"/>
+  <Folder Name="/Package/">
+    <Project Path="Package/EPPackage/EPPackage.csproj" />
   </Folder>
 </Solution>

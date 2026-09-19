@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Servicio_demo.Authentication;
+using EPPackage.Authentication.Domain.Defaults;
 
 namespace Servicio_demo.Controllers;
 

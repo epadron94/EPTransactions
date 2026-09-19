@@ -1,4 +1,6 @@
-using Servicio_demo.Authentication;
+using EPPackage.Authentication.Domain.Defaults;
+using EPPackage.Authentication.Domain.Options;
+using EPPackage.Authentication;
 
 var builder = WebApplication.CreateBuilder(args);
 
