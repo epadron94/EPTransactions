@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
-
-namespace ApiGateway.Middleware;
+using EPPackage.Utilities;
+using ApiGateway.Middleware;
 
 // Signs the inbound "OM-payload" header with the configured ECDSA private key
 // and forwards the raw payload + signature as internal headers for downstream services.
@@ -27,7 +27,9 @@ public class GatewaySignerMiddleware
     {
         if (context.Request.Headers.TryGetValue(PayloadHeaderName, out var omPayload))
         {
-            var ecdsa = await keyProvider.GetSigningKeyAsync(context.RequestAborted);
+            var route = context.Request.Path.Value?.Split("/")[2].ToLower();
+            var kidValue = EPUtilities.EndpointKeys[route!];
+            var ecdsa = await keyProvider.GetSigningKeyAsync(kidValue,context.RequestAborted);
 
             var payloadBytes = Encoding.UTF8.GetBytes(omPayload.ToString());
             var signatureBytes = ecdsa.SignData(payloadBytes, HashAlgorithmName.SHA256);

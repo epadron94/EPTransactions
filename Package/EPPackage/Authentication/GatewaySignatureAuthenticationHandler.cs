@@ -7,6 +7,7 @@ using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using EPPackage.Utilities;
 
 namespace EPPackage.Authentication;
 
@@ -44,9 +45,10 @@ public class GatewaySignatureAuthenticationHandler : AuthenticationHandler<Gatew
         }
 
         ECDsa publicKey;
-        try
+        try 
         {
-            publicKey = await GetPublicKeyAsync();
+            var endpoint = Request.Path.Value?.Split("/")[2].ToLower();
+            publicKey = await GetPublicKeyAsync(endpoint!);
         }
         catch (Exception ex)
         {
@@ -63,12 +65,13 @@ public class GatewaySignatureAuthenticationHandler : AuthenticationHandler<Gatew
         return AuthenticateResult.Success(ticket);
     }
 
-    private async Task<ECDsa> GetPublicKeyAsync()
+    private async Task<ECDsa> GetPublicKeyAsync(string endpoint)
     {
         var jwks = await httpClient.GetFromJsonAsync<JwksResponse>(Options.JwksUrl)
             ?? throw new InvalidOperationException("Empty JWKS response");
         
-        var jwk = jwks.Keys.FirstOrDefault()
+        var keyName = EPUtilities.EndpointKeys[endpoint];
+        var jwk = jwks.Keys.FirstOrDefault(k => k.Kid == keyName)
             ?? throw new InvalidOperationException("No keys found");
         
         var parameters = new ECParameters
@@ -89,6 +92,5 @@ public class GatewaySignatureAuthenticationHandler : AuthenticationHandler<Gatew
         padded += (padded.Length % 4) switch { 2 => "==", 3 => "=", _ => "" };
         return Convert.FromBase64String(padded);
     }
-
 }
 

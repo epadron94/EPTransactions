@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using ApiGateway.Domain.Entities;
 using ApiGateway.Middleware;
 using Microsoft.AspNetCore.Mvc;
 
@@ -20,22 +21,26 @@ public class JwksController : ControllerBase
     [HttpGet("/.well-known/jwks.json")]
     public async Task<IActionResult> Get()
     {
-        var(kid, ecdsa) = await _keyProvider.GetPublicKeyAsync(HttpContext.RequestAborted);
-        var parameters = ecdsa.ExportParameters(includePrivateParameters: false);
-        var crv = GetCurveName(parameters.Curve);
-
-        var jwk = new
+        List<object> jwks = new(); 
+        List<KeyGen> publicKeys= await _keyProvider.GetPublicKeysAsync(HttpContext.RequestAborted);
+        publicKeys.ForEach(t =>
         {
-            kty = "EC",
-            crv,
-            x = Base64UrlEncode(parameters.Q.X!),
-            y = Base64UrlEncode(parameters.Q.Y!),
-            use = "sig",
-            alg = GetAlgorithmName(crv),
-            kid = "gateway-signer"
-        };
+            var parameters = t.Key.ExportParameters(includePrivateParameters:false);
+            var crv = GetCurveName(parameters.Curve);
+            var jwk = new
+            {
+                kty = "EC",
+                crv,
+                x = Base64UrlEncode(parameters.Q.X!),
+                y = Base64UrlEncode(parameters.Q.Y!),
+                use = "sig",
+                alg = GetAlgorithmName(crv),
+                kid = t.Kid
+            };
+        jwks.Add(jwk);
+        });
 
-        return Ok(new { keys = new[] { jwk } });
+        return Ok(new { keys = jwks });
     }
 
     private static string GetCurveName(ECCurve curve)

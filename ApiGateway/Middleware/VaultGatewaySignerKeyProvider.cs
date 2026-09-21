@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using ApiGateway.Domain.Entities;
 using Microsoft.Extensions.Options;
 using VaultSharp;
 using VaultSharp.V1.Commons;
@@ -8,8 +9,10 @@ namespace ApiGateway.Middleware;
 
 public interface IGatewaySignerKeyProvider
 {
-    Task<ECDsa> GetSigningKeyAsync(CancellationToken ct = default);
-    Task<(string Kid, ECDsa PublicKey)> GetPublicKeyAsync(CancellationToken ct = default);
+    //Serve to GatewaySignerMiddleware to get a single auth key
+    Task<ECDsa> GetSigningKeyAsync(string kid, CancellationToken ct = default);
+    //SErve to /.well-known/jwks.json public endpoint
+    Task<List<KeyGen>> GetPublicKeysAsync(CancellationToken ct = default);
 }
 
 public class VaultGatewaySignerKeyProvider : IGatewaySignerKeyProvider
@@ -18,8 +21,9 @@ public class VaultGatewaySignerKeyProvider : IGatewaySignerKeyProvider
     private readonly VaultOptions vaultOptions;
     private readonly string serviceName;
 
-    private ECDsa? cachedKey;
-    private string? cachedKid;
+    private List<KeyGen> cachedKeys = new();
+    //private ECDsa? cachedKey;
+    //private string? cachedKid;
     private DateTimeOffset cacheExpiresAt = DateTimeOffset.MinValue;
     private readonly TimeSpan cacheDuration = TimeSpan.FromMinutes(5);
     private readonly SemaphoreSlim _lock = new(1,1);
@@ -34,44 +38,60 @@ public class VaultGatewaySignerKeyProvider : IGatewaySignerKeyProvider
             ?? throw new InvalidOperationException("GatewaySigner:ServiceName is not configured.");
     }
 
-    public async Task<(string, ECDsa)> GetPublicKeyAsync(CancellationToken ct = default)
+    public async Task<List<KeyGen>> GetPublicKeysAsync(CancellationToken ct = default)
     {
         await EnsureLoadedAsync(ct);
-        return (cachedKid!, cachedKey!);
+        return cachedKeys;
     }
 
-    public async Task<ECDsa> GetSigningKeyAsync(CancellationToken ct = default)
+    public async Task<ECDsa> GetSigningKeyAsync(string kid,CancellationToken ct = default)
     {
         await EnsureLoadedAsync(ct);
-        return cachedKey!;
+        var cachedkey = cachedKeys.FirstOrDefault(k => k.Kid == kid)?.Key;
+        return cachedkey!;
     }
 
     private async Task EnsureLoadedAsync(CancellationToken ct)
     {
-        if(cachedKey != null && DateTimeOffset.UtcNow < cacheExpiresAt)
+        if(cachedKeys.Count > 0 && DateTimeOffset.UtcNow < cacheExpiresAt)
         return;
 
         await _lock.WaitAsync(ct);
         try
         {
-            if(cachedKey != null && DateTimeOffset.UtcNow < cacheExpiresAt)
+            if(cachedKeys.Count > 0 && DateTimeOffset.UtcNow < cacheExpiresAt)
             return;
 
-            Secret<SecretData> secret = await vaultClient.V1.Secrets.KeyValue.V2
-            .ReadSecretAsync(path: $"{vaultOptions.SecretPathPrefix}/{serviceName}",
+            var secretsList = await vaultClient.V1.Secrets.KeyValue.V2
+            .ReadSecretPathsAsync(path: $"{vaultOptions.SecretPathPrefix}",
                             mountPoint: vaultOptions.MountPath);
 
-            var pem = ((JsonElement)secret.Data.Data["private_key_pem"]).GetString()
-                ?? throw new InvalidOperationException("private_key_pem missing");
-            
-            var kid = ((JsonElement)secret.Data.Data["kid"]).GetString()
-                ?? throw new InvalidOperationException("kid is missing");
-            var ecdsa = ECDsa.Create();
-            ecdsa.ImportFromPem(pem);
+            var newKeys = new List<KeyGen>();
 
-            cachedKey?.Dispose();
-            cachedKey =  ecdsa;
-            cachedKid = kid;
+            foreach(var keyName in secretsList.Data.Keys)
+            {
+                var secret = await vaultClient.V1.Secrets.KeyValue.V2
+                    .ReadSecretAsync(path: $"{vaultOptions.SecretPathPrefix}/{keyName}",
+                                    mountPoint: vaultOptions.MountPath);
+
+                var pem = ((JsonElement)secret.Data.Data["private_key_pem"]).GetString()
+                    ?? throw new InvalidOperationException("private key missing");
+
+                var kid = ((JsonElement)secret.Data.Data["kid"]).GetString()
+                    ?? throw new InvalidOperationException("kid missing");
+
+                var ecdsa = ECDsa.Create();
+                ecdsa.ImportFromPem(pem);
+                var x = new KeyGen { Kid = kid, Key = ecdsa };
+                newKeys.Add(x);
+            }
+
+            foreach(var oldKey in cachedKeys)
+            {
+                oldKey.Key.Dispose();
+            }
+
+            cachedKeys = newKeys;
             cacheExpiresAt = DateTimeOffset.UtcNow.Add(cacheDuration);
         }
         finally

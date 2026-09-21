@@ -12,4 +12,6 @@ public class JwkKey
 
     [JsonPropertyName("y")]
     public required string Y {get;set;}
+    [JsonPropertyName("kid")]
+    public required string Kid {get;set;}
 }
